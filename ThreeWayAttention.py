@@ -18,6 +18,11 @@ class ThreeWayAttention(nn.Module):
         self.from_B = nn.Linear(input_channels[1], inner_channels, bias=False)
         self.from_C = nn.Linear(input_channels[2], inner_channels, bias=False)
 
+        self.val_A = nn.Linear(input_channels[0], inner_channels, bias=False)
+        self.val_B = nn.Linear(input_channels[1], inner_channels, bias=False)
+        self.val_C = nn.Linear(input_channels[2], inner_channels, bias=False)
+
+
         self.to_A = nn.Sequential(nn.Linear(inner_channels, input_channels[0]), nn.Dropout(dropout))
         self.to_B = nn.Sequential(nn.Linear(inner_channels, input_channels[1]), nn.Dropout(dropout))
         self.to_C = nn.Sequential(nn.Linear(inner_channels, input_channels[2]), nn.Dropout(dropout))
@@ -34,8 +39,12 @@ class ThreeWayAttention(nn.Module):
         bb = self.from_B(B)
         cc = self.from_C(C)
 
+        vaa = self.val_A(A)
+        vbb = self.val_B(B)
+        vcc = self.val_C(C)
+
         # group the batch and heads dimensions
-        a, b, c = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=self.heads), (aa, bb, cc))
+        a, b, c, va, vb, vc = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=self.heads), (aa, bb, cc, vaa, vbb, vcc))
 
         # the core of it all. a third order score tensor (+1 more order to include batch dimension)
         sim = einsum('e a d, e b d, e c d -> e a b c', a, b, c) * self.scale
@@ -54,9 +63,9 @@ class ThreeWayAttention(nn.Module):
         attn_c = rearrange(sim, 'e a b c -> e c (a b)').softmax(dim=2)
 
         # get (V)alues from standard attention. except the values are pairwise products of tokens
-        ab = rearrange(einsum('e a d, e b d -> e a b d', a, b), 'a b c d -> a (b c) d')
-        bc = rearrange(einsum('e b d, e c d -> e b c d', b, c), 'a b c d -> a (b c) d')
-        ca = rearrange(einsum('e c d, e a d -> e c a d', c, a), 'a b c d -> a (b c) d')
+        ab = rearrange(einsum('e a d, e b d -> e a b d', va, vb), 'a b c d -> a (b c) d')
+        bc = rearrange(einsum('e b d, e c d -> e b c d', vb, vc), 'a b c d -> a (b c) d')
+        ca = rearrange(einsum('e c d, e a d -> e c a d', vc, va), 'a b c d -> a (b c) d')
 
         # contract tensor against Value tensors
         out_a0 = einsum('b i j, b j d -> b i d', attn_a, bc)
