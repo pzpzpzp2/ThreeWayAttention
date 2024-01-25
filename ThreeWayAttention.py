@@ -34,7 +34,8 @@ class ThreeWayAttention(nn.Module):
         assert [cA, cB, cC] == self.input_channels
         assert list(mask.shape) == [bs, nA, nB, nC]
 
-        # linear layer to make all tokens have same number of channels
+        # linear layer embed all tokens into the same scoring space
+        # WE DONT SEPARATE Q AND K BECAUSE WE ASSUME ATTENDING IS SYMMETRIC. token 1 attends to token 2 means token 2 attends to token 1.
         aa = self.from_A(A)
         bb = self.from_B(B)
         cc = self.from_C(C)
